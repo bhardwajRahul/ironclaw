@@ -78,7 +78,7 @@ use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
 use ironclaw_filesystem::CompositeRootFilesystem;
-use ironclaw_host_api::ResourceScope;
+use ironclaw_host_api::{ResourceScope, UserId};
 use ironclaw_host_runtime::TurnRunSchedulerHandle;
 use ironclaw_llm::testing::provider_chain_over;
 use ironclaw_llm::{LlmProvider, SessionConfig, create_session_manager};
@@ -414,6 +414,22 @@ struct GroupBaseData {
     canonical_binding: ResolvedBinding,
 }
 
+impl GroupBaseData {
+    /// The canonical binding's resolved subject user id — the hashed `UserId`
+    /// the actor `host-user` resolves to. `live_approvals` and `profile_tools`
+    /// both pin their capability harness's executor user to this so capability
+    /// dispatch shares the run's `(tenant, user)` with the turn-store /
+    /// evidence scope resolved from the SAME `canonical_binding` (see the
+    /// `canonical_binding` field docs above).
+    fn canonical_subject_user(&self) -> HarnessResult<UserId> {
+        Ok(self
+            .canonical_binding
+            .subject_user_id
+            .clone()
+            .ok_or("canonical binding missing subject user id")?)
+    }
+}
+
 /// Builder for `RebornIntegrationGroup` with optional storage mode selection.
 /// Obtain via [`RebornIntegrationGroup::builder`]; defaults to
 /// `StorageMode::InMemory`.
@@ -661,11 +677,7 @@ impl RebornIntegrationGroupBuilder {
         // binding `build_base` already resolved for the shared turn-store /
         // evidence scope, so the approval user and the turn-store scope are
         // derived from one probe and cannot drift.
-        let subject_user = base
-            .canonical_binding
-            .subject_user_id
-            .clone()
-            .ok_or("canonical binding missing subject user id")?;
+        let subject_user = base.canonical_subject_user()?;
         let host_runtime = HostRuntimeCapabilityHarness::file_tools_requiring_approval()
             .await?
             .with_user_id(subject_user);
@@ -726,7 +738,19 @@ impl RebornIntegrationGroupBuilder {
     /// Build a profile-tools group. See [`RebornIntegrationGroup::profile_tools`].
     pub async fn profile_tools(self) -> HarnessResult<RebornIntegrationGroup> {
         let base = self.build_base().await?;
-        let host_runtime = HostRuntimeCapabilityHarness::profile_tools().await?;
+        // Execute `builtin.profile_set` under the run's CANONICAL binding
+        // subject user (the hashed `UserId` the actor `host-user` resolves
+        // to), not the constructor's fixed test user, so capability dispatch
+        // and the loop's `resolve_user_profile` read-back share the SAME
+        // `(tenant, user)` — matching production and mirroring
+        // `live_approvals`'s alignment above. Without this, a second thread's
+        // loop resolves the profile under the canonical binding subject user
+        // while the write dispatched under the fixed constructor user, so the
+        // read-back never sees it.
+        let subject_user = base.canonical_subject_user()?;
+        let host_runtime = HostRuntimeCapabilityHarness::profile_tools()
+            .await?
+            .with_user_id(subject_user);
         let capability = GroupCapability::HostRuntime(Arc::new(host_runtime));
         self.into_group(base, capability).await
     }
