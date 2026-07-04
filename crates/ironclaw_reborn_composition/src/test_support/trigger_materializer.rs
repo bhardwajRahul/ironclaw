@@ -5,7 +5,8 @@
 //! materialization step in an integration-test harness — see
 //! [`materialize_trigger_prompt_for_test`]. This helper routes tests through
 //! `ConversationContentRefMaterializer::materialize_prompt` so they avoid
-//! duplicating trusted-trigger materialization.
+//! duplicating trusted-trigger materialization, the PR #5584 drift trap around
+//! trusted-trigger binding and thread recording.
 
 /// Materialize a `TriggerFire`'s prompt through the REAL trusted-trigger
 /// pipeline (`ConversationContentRefMaterializer::materialize_prompt` —

@@ -447,7 +447,8 @@ fn conversation_id<T>(result: Result<T, InboundTurnError>) -> Result<T, TriggerE
 /// helper instead of hand-mirroring `trigger_resolve_request` +
 /// `record_trigger_prompt` + the content-ref shape field-by-field. Keeping
 /// this seam owned by the materializer prevents test support from drifting
-/// when trusted-trigger binding or thread-recording behavior changes.
+/// when trusted-trigger binding or thread-recording behavior changes (the
+/// PR #5584 ownership-boundary concern).
 ///
 /// The helper calls the materializer's private tuple-returning path so the
 /// returned `TurnScope` is the exact scope resolved during materialization.
@@ -472,7 +473,6 @@ where
     );
     materializer.materialize_prompt_with_scope(fire).await
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
