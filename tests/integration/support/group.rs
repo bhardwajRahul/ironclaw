@@ -109,6 +109,9 @@ use super::harness::{
     HarnessTurnBackend, HostRuntimeCapabilityHarness, RecordingTestCapabilityPort,
     StaticCapabilitySurfaceProfileResolver, test_product_scope,
 };
+use super::planned_runtime_parts_shape::{
+    DefaultPlannedRuntimePartsShape, harness_planned_runtime_parts_shape,
+};
 use super::product_workflow::RebornProductWorkflowHarness;
 use super::reply::RebornScriptedReply;
 use super::scope_gateway::ScopeRegistryGateway;
@@ -217,6 +220,12 @@ pub(crate) struct GroupSharedStorage {
     /// reads the SAME account the loop's accountant seeds. `None` unless
     /// budget accounting is wired.
     pub(crate) budget_account: Option<ResourceAccount>,
+    /// W5-WIRING-PARITY: the Some/None shape of the `DefaultPlannedRuntimeParts`
+    /// literal this group's ONE planned runtime was actually built from,
+    /// captured at construction (before `build_default_planned_runtime`
+    /// consumes the struct by value) so a parity test can read back the
+    /// harness's REAL wiring shape, not a re-derived approximation.
+    pub(crate) planned_runtime_parts_shape: DefaultPlannedRuntimePartsShape,
 }
 
 impl GroupSharedStorage {
@@ -382,6 +391,14 @@ impl RebornIntegrationGroup {
             GroupCapability::HostRuntime(arc) => Some(arc),
             GroupCapability::Recording => None,
         }
+    }
+
+    /// W5-WIRING-PARITY: the Some/None shape of the `DefaultPlannedRuntimeParts`
+    /// literal this group's ONE planned runtime was actually built from
+    /// (`into_group`), captured at construction time before the struct was
+    /// consumed. See `tests/integration/wiring_parity.rs`.
+    pub fn planned_runtime_parts_shape(&self) -> DefaultPlannedRuntimePartsShape {
+        self.shared.planned_runtime_parts_shape
     }
 
     /// C-MULTIUSER: grant global always-allow (auto-approve) for a SPECIFIC run
@@ -726,7 +743,12 @@ impl RebornIntegrationGroupBuilder {
             (None, None, None)
         };
 
-        let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
+        // W5-WIRING-PARITY: bind the literal to a local before consuming it so
+        // `harness_planned_runtime_parts_shape` can read the REAL Some/None
+        // shape this group's runtime is built from — the only place this
+        // struct value exists before `build_default_planned_runtime` takes it
+        // by value.
+        let parts = DefaultPlannedRuntimeParts {
             turn_state: turn_state_for_runtime,
             thread_service: group_thread_harness.service.clone() as Arc<dyn SessionThreadService>,
             thread_scope: group_thread_scope,
@@ -790,13 +812,17 @@ impl RebornIntegrationGroupBuilder {
             // C-COMMCTX: delivery-preference / connected-channel provider (Some
             // only when `communication_context_provider()` was set).
             communication_context_provider: self.communication_context_provider,
+            // No RecordingSecurityAuditSink double exists yet (nearai/ironclaw#5640);
+            // wiring_parity.rs's ALLOWED_DIVERGENCES tracks this field by name, not line.
             hook_security_audit_sink: None,
             turn_event_sink: composed_turn_event_sink,
             attachment_read_port: capability_recorder
                 .attachment_test_support()
                 .map(|support| support.read_port),
             scheduler_wake_wiring: None,
-        })?;
+        };
+        let planned_runtime_parts_shape = harness_planned_runtime_parts_shape(&parts);
+        let composition = build_default_planned_runtime(parts)?;
 
         Ok(RebornIntegrationGroup {
             shared: Arc::new(GroupSharedStorage {
@@ -815,6 +841,7 @@ impl RebornIntegrationGroupBuilder {
                 trace_capture_scope: trace_capture.map(|(_, scope)| scope),
                 budget_governor,
                 budget_account,
+                planned_runtime_parts_shape,
             }),
         })
     }
