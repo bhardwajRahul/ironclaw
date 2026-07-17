@@ -54,10 +54,7 @@ use ironclaw_resources::{
     InMemoryResourceGovernor, JsonFileResourceGovernorStore, PersistentResourceGovernor,
     ResourceAccount, ResourceError, ResourceGovernor, ResourceLimits, ResourceTally,
 };
-use ironclaw_run_state::{
-    ApprovalRequestStore, InMemoryApprovalRequestStore, InMemoryRunStateStore, RunStart,
-    RunStateStore, RunStatus,
-};
+use ironclaw_run_state::{ApprovalRequestStore, RunStart, RunStateStore, RunStatus};
 use ironclaw_scripts::{ScriptRuntime, ScriptRuntimeConfig};
 use ironclaw_secrets::{
     InMemoryCredentialBroker, InMemorySecretStore, SecretMaterial, SecretStore,
@@ -102,7 +99,7 @@ fn assert_actor_policy_denied(outcome: RuntimeCapabilityOutcome) {
 }
 
 async fn assert_alice_run_status(
-    run_state: &InMemoryRunStateStore,
+    run_state: &ironclaw_run_state::FilesystemRunStateStore<ironclaw_filesystem::InMemoryBackend>,
     scope: &ResourceScope,
     invocation_id: InvocationId,
     expected_status: RunStatus,
@@ -556,6 +553,59 @@ async fn production_wiring_validation_classifies_in_memory_backed_lease_store_as
         ),
         "a wired lease store must satisfy capability-lease presence: {report:?}"
     );
+}
+
+#[tokio::test]
+async fn production_wiring_validation_classifies_in_memory_backed_run_state_and_approval_stores_as_local_only()
+ {
+    // Regression guard for arch-simplification §4.3 (deleting
+    // `InMemoryRunStateStore` / `InMemoryApprovalRequestStore`): the classifier
+    // keyed the now-deleted stores as explicit `LocalOnly` types, and unknown
+    // component types default to `ProductionCandidate`. Their replacements — the
+    // production `Filesystem*Store<InMemoryBackend>` pair the no-durable build
+    // and every test seam wire — must classify the same way, or volatile
+    // in-memory run-state/approval stores could silently satisfy production
+    // readiness. Drive the real `HostRuntimeServices` caller so classification
+    // is exercised through the monomorphized `with_run_state::<T>` /
+    // `with_approval_requests::<T>` type capture, not just the classifier
+    // helper (the combined-store path hard-codes `LocalOnly` and bypasses it).
+    let services = HostRuntimeServices::new(
+        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
+        Arc::new(LocalFilesystem::new()),
+        Arc::new(InMemoryResourceGovernor::new()),
+        Arc::new(GrantAuthorizer::new()),
+        ironclaw_processes::in_memory_backed_process_services(),
+        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
+    )
+    .with_run_state(Arc::new(
+        ironclaw_run_state::in_memory_backed_run_state_store(),
+    ))
+    .with_approval_requests(Arc::new(
+        ironclaw_run_state::in_memory_backed_approval_request_store(),
+    ));
+
+    let report = services
+        .validate_production_wiring(&ProductionWiringConfig::new([]))
+        .expect_err(
+            "in-memory-backed run-state/approval stores must not pass production validation",
+        );
+
+    for component in [
+        ProductionWiringComponent::RunState,
+        ProductionWiringComponent::ApprovalRequests,
+    ] {
+        assert!(
+            report.contains(
+                component,
+                ProductionWiringIssueKind::LocalOnlyImplementation
+            ),
+            "Filesystem store<InMemoryBackend> for {component:?} must classify local-only: {report:?}"
+        );
+        assert!(
+            !report.contains(component, ProductionWiringIssueKind::Missing),
+            "a wired store must satisfy {component:?} presence: {report:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1421,8 +1471,8 @@ async fn host_runtime_services_builds_dispatcher_runtime_and_health_from_registe
     let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
         Arc::new(GrantAuthorizer::new());
     let process_services = ironclaw_processes::in_memory_backed_process_services();
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let events = InMemoryEventSink::new();
     let script_runtime = Arc::new(ScriptRuntime::new(
@@ -2082,8 +2132,8 @@ async fn host_runtime_services_jsonl_event_store_projects_same_runtime_sequence_
 
 #[tokio::test]
 async fn host_runtime_services_approval_resolution_projects_durable_audit_metadata_only() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let services = HostRuntimeServices::new(
@@ -2191,8 +2241,8 @@ async fn host_runtime_services_jsonl_approval_audit_projection_rejects_foreign_c
     .await
     .unwrap();
     let audit_log = Arc::clone(&stores.audit);
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let services = HostRuntimeServices::new(
         Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
@@ -2576,8 +2626,8 @@ async fn host_runtime_services_resumes_approved_capability_and_consumes_lease_on
 
 #[tokio::test]
 async fn host_runtime_services_resume_missing_runtime_secret_returns_auth_gate() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     let secret_handle = SecretHandle::new("approval_resume_token").unwrap();
@@ -3117,8 +3167,8 @@ async fn host_runtime_services_auth_resume_rejects_changed_actor_before_prefligh
 
 #[tokio::test]
 async fn host_runtime_services_resume_spawn_rejects_changed_actor_before_input_and_preflight() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let process_services = ironclaw_processes::in_memory_backed_process_services();
     let process_store = process_services.process_store();
@@ -3284,8 +3334,8 @@ async fn host_runtime_services_auth_resume_dispatches_blocked_auth_run() {
     // fires an approval gate, and the first resume (missing credential) bounces
     // to BlockedAuth.  After adding the credential we verify that
     // auth_resume_capability dispatches and completes the run.
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     let secret_handle = SecretHandle::new("auth_resume_token").unwrap();
@@ -3874,8 +3924,8 @@ async fn host_runtime_spawn_process_sandbox_host_failure_fails_after_preflight()
 
 #[tokio::test]
 async fn host_runtime_spawn_process_sandbox_blocks_for_approval_before_executor() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let process_services = ironclaw_processes::in_memory_backed_process_services();
     let result_store = process_services.result_store();
@@ -3950,8 +4000,8 @@ async fn host_runtime_spawn_process_sandbox_blocks_for_approval_before_executor(
 
 #[tokio::test]
 async fn host_runtime_spawn_process_sandbox_resume_changed_input_fails_before_executor() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let sandbox_executor = Arc::new(RecordingSandboxProcessExecutor::default());
     let services = HostRuntimeServices::new(
@@ -4025,8 +4075,8 @@ async fn host_runtime_spawn_process_sandbox_resume_changed_input_fails_before_ex
 
 #[tokio::test]
 async fn host_runtime_spawn_process_sandbox_resume_invalid_plan_fails_before_executor() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let sandbox_executor = Arc::new(RecordingSandboxProcessExecutor::default());
     let services = HostRuntimeServices::new(
@@ -4119,8 +4169,8 @@ async fn host_runtime_spawn_process_sandbox_resume_invalid_plan_fails_before_exe
 
 #[tokio::test]
 async fn host_runtime_spawn_process_sandbox_resume_host_failure_fails_after_approval() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let sandbox_executor = Arc::new(RecordingSandboxProcessExecutor::default());
     let services = HostRuntimeServices::new(
@@ -4643,7 +4693,7 @@ async fn host_runtime_services_enforces_output_limit_and_reconciles_resource_usa
                 .set_max_output_bytes(10_000),
         )
         .unwrap();
-    let run_state = Arc::new(InMemoryRunStateStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
     let reservation_id = ResourceReservationId::new();
     let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
         Arc::new(ObligatingAuthorizer::new(vec![
@@ -4711,7 +4761,7 @@ async fn host_runtime_services_releases_reservation_when_dispatch_preflight_fail
             ResourceLimits::default().set_max_concurrency_slots(1),
         )
         .unwrap();
-    let run_state = Arc::new(InMemoryRunStateStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
     let reservation_id = ResourceReservationId::new();
     let services = HostRuntimeServices::new(
         Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
@@ -6038,8 +6088,8 @@ async fn host_runtime_services_wasm_operation_failed_reconciles_wall_clock_after
 /// immediately, approval gate never fires.
 #[tokio::test]
 async fn invoke_capability_missing_credential_returns_auth_before_approval() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     // Note: the secret "script_api_token" is deliberately NOT inserted.
@@ -6111,8 +6161,8 @@ async fn invoke_capability_missing_credential_returns_auth_before_approval() {
 /// gate as it did before Fix B — the pre-flight must not block happy-path flows.
 #[tokio::test]
 async fn invoke_capability_present_credential_proceeds_to_approval() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     let secret_handle = SecretHandle::new("script_api_token").unwrap();
@@ -6192,8 +6242,8 @@ async fn invoke_capability_present_credential_proceeds_to_approval() {
 /// `ApprovalRequired` (not a false `AuthRequired`).
 #[tokio::test]
 async fn spawn_capability_present_credential_proceeds_to_approval() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     let secret_handle = SecretHandle::new("script_api_token").unwrap();
@@ -6306,8 +6356,8 @@ async fn invoke_capability_no_credential_requirement_proceeds_normally() {
 /// path through the spawn dispatch lane.
 #[tokio::test]
 async fn spawn_capability_missing_credential_returns_auth_before_approval() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let secret_store = Arc::new(InMemorySecretStore::new());
     // Note: the secret "script_api_token" is deliberately NOT inserted.
@@ -6380,8 +6430,8 @@ async fn spawn_capability_missing_credential_returns_auth_before_approval() {
 /// approval gate normally.
 #[tokio::test]
 async fn invoke_capability_no_credential_requirement_with_wired_store_proceeds_normally() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     // SCRIPT_MANIFEST has no runtime_credentials; wire a secret store anyway to
     // confirm the is_empty() early-exit branch is taken, not the no-store branch.
@@ -6464,8 +6514,8 @@ async fn invoke_capability_no_credential_requirement_with_wired_store_proceeds_n
 /// `runtime_credentials` backstop.
 #[tokio::test]
 async fn invoke_capability_secret_store_error_skips_preflight() {
-    let run_state = Arc::new(InMemoryRunStateStore::new());
-    let approval_requests = Arc::new(InMemoryApprovalRequestStore::new());
+    let run_state = Arc::new(ironclaw_run_state::in_memory_backed_run_state_store());
+    let approval_requests = Arc::new(ironclaw_run_state::in_memory_backed_approval_request_store());
     let capability_leases = Arc::new(in_memory_backed_capability_lease_store());
     let script_runtime = Arc::new(RecordingScriptExecutor::default());
     // Counts metadata() probes so we can prove the obligation backstop ran on resume.
