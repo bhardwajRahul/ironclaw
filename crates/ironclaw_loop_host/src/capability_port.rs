@@ -1998,7 +1998,6 @@ impl LoopCapabilityPort for HostRuntimeLoopCapabilityPort {
                     request.capability_id,
                     estimate.clone(),
                     input.clone(),
-                    trust_decision,
                 )
                 .with_idempotency_key(idempotency_key.clone());
                 dispatch_runtime_capability_resume(self.runtime.as_ref(), runtime_request).await
@@ -2022,7 +2021,6 @@ impl LoopCapabilityPort for HostRuntimeLoopCapabilityPort {
                     request.capability_id,
                     estimate.clone(),
                     input.clone(),
-                    trust_decision,
                     prior_approval_id,
                 )
                 .with_idempotency_key(idempotency_key.clone());
@@ -2035,7 +2033,6 @@ impl LoopCapabilityPort for HostRuntimeLoopCapabilityPort {
                     request.capability_id,
                     estimate.clone(),
                     input.clone(),
-                    trust_decision,
                 )
                 .with_idempotency_key(idempotency_key.clone());
                 dispatch_runtime_capability(self.runtime.as_ref(), runtime_request).await

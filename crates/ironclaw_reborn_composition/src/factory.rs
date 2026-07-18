@@ -5643,7 +5643,7 @@ mod tests {
         RuntimeCredentialAccountRequest, RuntimeCredentialAccountResolver,
     };
     use ironclaw_product_workflow::{LifecyclePackageKind, LifecyclePackageRef, LifecyclePhase};
-    use ironclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+
     #[cfg(any(feature = "libsql", feature = "postgres"))]
     use rust_decimal_macros::dec;
     #[cfg(feature = "libsql")]
@@ -6974,7 +6974,6 @@ mod tests {
                 CapabilityId::new("notion.notion-search").unwrap(),
                 ResourceEstimate::default(),
                 serde_json::json!({ "query": "project notes" }),
-                notion_mcp_trust_decision(),
             ))
             .await
             .expect("runtime invocation completes");
@@ -7036,7 +7035,6 @@ mod tests {
                     "provider": "brave",
                     "query": "ironclaw reborn"
                 }),
-                trust_decision(),
             ))
             .await
             .expect("runtime invocation completes");
@@ -8209,7 +8207,6 @@ mod tests {
             capability_id,
             context,
             input,
-            trust_decision(),
         )
         .await
     }
@@ -8453,18 +8450,6 @@ mod tests {
         ]
     }
 
-    fn trust_decision() -> TrustDecision {
-        TrustDecision {
-            effective_trust: EffectiveTrustClass::user_trusted(),
-            authority_ceiling: AuthorityCeiling {
-                allowed_effects: allowed_effects(),
-                max_resource_ceiling: None,
-            },
-            provenance: TrustProvenance::Default,
-            evaluated_at: chrono::Utc::now(),
-        }
-    }
-
     fn local_dev_minimal_approval_policy()
     -> ironclaw_host_api::runtime_policy::EffectiveRuntimePolicy {
         let mut policy = crate::local_dev_runtime_policy().expect("local-dev policy resolves");
@@ -8472,18 +8457,6 @@ mod tests {
         policy.resolved_profile = ironclaw_host_api::runtime_policy::RuntimeProfile::LocalYolo;
         policy.approval_policy = ironclaw_host_api::runtime_policy::ApprovalPolicy::Minimal;
         policy
-    }
-
-    fn notion_mcp_trust_decision() -> TrustDecision {
-        TrustDecision {
-            effective_trust: EffectiveTrustClass::user_trusted(),
-            authority_ceiling: AuthorityCeiling {
-                allowed_effects: notion_mcp_allowed_effects(),
-                max_resource_ceiling: None,
-            },
-            provenance: TrustProvenance::Default,
-            evaluated_at: chrono::Utc::now(),
-        }
     }
 
     fn skill_md(name: &str, description: &str, prompt: &str) -> String {
