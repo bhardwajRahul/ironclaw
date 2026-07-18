@@ -32,8 +32,6 @@ mod blocked_auth_resume;
 mod error;
 mod extension_host;
 mod factory;
-mod failure_lane;
-mod failure_summary;
 mod input;
 mod lifecycle_auth_continuation;
 mod llm_admin;
@@ -56,7 +54,6 @@ pub use ironclaw_product_workflow::{
 #[cfg(any(feature = "slack-v2-host-beta", feature = "telegram-v2-host-beta"))]
 mod delivered_gate_routing;
 mod readiness;
-mod retry_disposition;
 mod root;
 mod runtime;
 mod runtime_input;
@@ -86,8 +83,6 @@ pub use factory::RebornLocalDevApprovalTestParts;
 #[cfg(feature = "migration-support")]
 pub use factory::extension_installation_store_for_migration;
 pub use factory::{RebornServices, build_reborn_services, builtin_first_party_trust_policy};
-pub use failure_lane::{ALL_RUN_FAILURE_CATEGORIES, FailureLane, failure_lane};
-pub use failure_summary::reborn_failure_summary_for_category;
 pub use input::{OAuthClientConfig, RebornBuildInput, RebornRuntimeProcessBinding};
 #[cfg(feature = "webui-v2-beta")]
 pub use ironclaw_auth::GoogleOAuthRouteConfig;
@@ -106,6 +101,12 @@ pub use ironclaw_product_workflow::{
     LifecycleProductResponse, LifecycleSearchExtensionSummary,
 };
 pub use ironclaw_runner::runtime::DEFAULT_TURN_RUNNER_WORKER_COUNT;
+// Re-exported for `ironclaw_reborn_cli` (`runtime/mod.rs` turn-failure display):
+// the CLI consumes composition as its facade and must not grow a direct
+// `ironclaw_runner` edge for one summary helper. All other run-failure
+// classifier items moved to `ironclaw_runner::{failure_lane, failure_summary,
+// retry_disposition}` with consumers repointed (no path-preservation shims).
+pub use ironclaw_runner::failure_summary::reborn_failure_summary_for_category;
 #[cfg(any(feature = "libsql", feature = "postgres"))]
 pub use ironclaw_runtime_policy::{
     ResolveRequest as RuntimePolicyResolveRequest, resolve as resolve_runtime_policy,
@@ -199,7 +200,6 @@ pub use readiness::{
     RebornReadinessDiagnosticComponent, RebornReadinessDiagnosticReason,
     RebornReadinessDiagnosticStatus, RebornReadinessState, RebornWorkerReadiness,
 };
-pub use retry_disposition::{RetryDisposition, retry_disposition};
 pub use root::product_live_adapters::{
     ProductLiveCapabilityAuthorityResolver, ProductLiveCapabilityIo, ProductLiveModelRouteSettings,
     ProductLivePlannedRuntimeAdapterConfig, ProductLivePlannedRuntimeAdapterError,
