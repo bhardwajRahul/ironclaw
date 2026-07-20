@@ -265,7 +265,6 @@ SEL_V2 = {
     "workspace_directory_entry_for": (
         "[data-testid='workspace-directory-entry'][data-entry-path='{path}']"
     ),
-    "toast": "[data-testid='toast']",
     "thread_delete_for": (
         '[data-testid="thread-delete"][data-thread-id="{id}"]'
     ),
