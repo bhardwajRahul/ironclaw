@@ -8,8 +8,8 @@
 //!
 //! ## Key types
 //!
-//! - [`DefaultProductWorkflow`] — top-level orchestrator that implements
-//!   [`ironclaw_product_adapters::ProductWorkflow`].
+//! - [`DefaultProductSurface`] — top-level orchestrator that implements
+//!   [`ProductSurface`].
 //! - [`InboundTurnService`] / [`DefaultInboundTurnService`] — the narrower
 //!   user-message path that coordinates binding + turn submission.
 //! - [`ConversationBindingService`] — resolves external adapter refs to
@@ -193,7 +193,9 @@ pub use reborn_services::{
     AUTOMATIONS_VIEW, ActiveModelReader, AdminCreateUserFields, AdminCreatedUser, AdminUserError,
     AdminUserRecord, AdminUserRole, AdminUserSecretMeta, AdminUserService, AdminUserStatus,
     AutomationListRequest, AutomationProductFacade, CANCEL_RUN_OPERATION, CREATE_THREAD_OPERATION,
-    ChannelAuthAccountState, ChannelConfigFacade, ChannelConnectionFacade, CodexLoginStart,
+    ChannelAuthAccountState, ChannelConfigFacade, ChannelConnectionFacade,
+    ChannelInboundSurfaceAdmission, ChannelInboundSurfaceOutcome,
+    ChannelInboundSurfaceRejectedAdmission, ChannelInboundSurfaceRequest, CodexLoginStart,
     EXTENSION_ACTIVATE_CAPABILITY, EXTENSION_ACTIVATE_CAPABILITY_ID, EXTENSION_IMPORT_CAPABILITY,
     EXTENSION_IMPORT_CAPABILITY_ID, EXTENSION_INSTALL_CAPABILITY, EXTENSION_INSTALL_CAPABILITY_ID,
     EXTENSION_REGISTRY_VIEW, EXTENSION_REMOVE_CAPABILITY, EXTENSION_REMOVE_CAPABILITY_ID,
@@ -232,12 +234,12 @@ pub use reborn_services::{
     PROJECT_UPDATE_CAPABILITY_ID, PROJECT_VIEW, PROJECTS_VIEW, ProductAgentBoundCaller,
     ProductCapabilityDescriptor, ProductCapabilityInput, ProductCapabilityInvoker,
     ProductOperation, ProductOperationId, ProductOperationRequest, ProductOperationResponse,
-    ProductSurface, ProductView, ProjectCaller, ProjectFilesystemReader, ProjectFsEntry,
-    ProjectFsEntryKind, ProjectFsError, ProjectFsFile, ProjectFsStat, ProjectService,
-    ProjectServiceError, RESOLVE_GATE_OPERATION, RETRY_RUN_OPERATION, RUN_ARTIFACT_SCHEMA,
-    RUN_ARTIFACT_VIEW, RebornAccountBindingSource, RebornAccountLoginLinkResponse,
-    RebornAccountTrace, RebornAccountTracesResponse, RebornAddMemberRequest,
-    RebornAdminConfigurationField, RebornAdminConfigurationGroup,
+    ProductOperationTypedInput, ProductSurface, ProductView, ProjectCaller,
+    ProjectFilesystemReader, ProjectFsEntry, ProjectFsEntryKind, ProjectFsError, ProjectFsFile,
+    ProjectFsStat, ProjectService, ProjectServiceError, RESOLVE_GATE_OPERATION,
+    RETRY_RUN_OPERATION, RUN_ARTIFACT_SCHEMA, RUN_ARTIFACT_VIEW, RebornAccountBindingSource,
+    RebornAccountLoginLinkResponse, RebornAccountTrace, RebornAccountTracesResponse,
+    RebornAddMemberRequest, RebornAdminConfigurationField, RebornAdminConfigurationGroup,
     RebornAdminConfigurationListResponse, RebornAdminConfigurationUse,
     RebornAdminCreateUserRequest, RebornAdminDeleteSecretProductRequest,
     RebornAdminPutSecretProductRequest, RebornAdminPutSecretRequest,
@@ -324,4 +326,4 @@ pub use webui_inbound::{
     WebUiResolveGateRequest, WebUiRetryRunRequest, WebUiSendMessageRequest,
     WebUiSetupExtensionRequest, webui_attachment_capabilities,
 };
-pub use workflow::DefaultProductWorkflow;
+pub use workflow::DefaultProductSurface;

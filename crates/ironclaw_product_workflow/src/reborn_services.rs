@@ -30,8 +30,10 @@ use ironclaw_host_api::{
     TenantId, TerminateHint, ThreadId, ToolVerdict, UserId,
 };
 use ironclaw_product_adapters::{
-    ProductAdapterError, ProductWorkflowRejectionKind, ProjectionStream,
-    ProjectionSubscriptionRequest,
+    AdapterInstallationId, ChannelInboundClassification, NormalizedInboundMessage,
+    ProductAdapterError, ProductAdapterId, ProductInboundAck, ProductInboundEnvelope,
+    ProductSourceChannel, ProductWorkflowRejectionKind, ProjectionStream,
+    ProjectionSubscriptionRequest, ProtocolAuthEvidence, RedactedString,
 };
 use ironclaw_threads::{
     AcceptInboundMessageRequest, AcceptedInboundMessageReplay, AttachmentRef, EnsureThreadRequest,
@@ -219,8 +221,8 @@ pub use types::{
 };
 pub use views::{
     ProductOperation, ProductOperationId, ProductOperationRequest, ProductOperationResponse,
-    ProductView, RebornViewDescriptor, RebornViewPage, RebornViewProvider, RebornViewQuery,
-    UnavailableRebornViewProvider,
+    ProductOperationTypedInput, ProductView, RebornViewDescriptor, RebornViewPage,
+    RebornViewProvider, RebornViewQuery, UnavailableRebornViewProvider,
 };
 
 type SkillActivationRecorder =
@@ -2087,6 +2089,53 @@ fn operator_diagnostics_surface_status(
     }
 }
 
+/// One verified, normalized channel message admitted through ProductSurface.
+///
+/// The channel ingress router verifies the transport request and runs the
+/// adapter's pure normalization first. ProductSurface owns conversion into the
+/// durable inbound envelope and commit path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelInboundSurfaceRequest {
+    pub adapter_id: ProductAdapterId,
+    pub source_channel: ProductSourceChannel,
+    pub installation_id: AdapterInstallationId,
+    pub evidence: ProtocolAuthEvidence,
+    pub received_at: chrono::DateTime<Utc>,
+    pub message: NormalizedInboundMessage,
+    pub classification: Option<ChannelInboundClassification>,
+}
+
+/// Durable channel admission evidence returned by ProductSurface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelInboundSurfaceAdmission {
+    pub envelope: ProductInboundEnvelope,
+    pub ack: ProductInboundAck,
+}
+
+/// Admission rejection after ProductSurface had enough trusted input to build
+/// the canonical envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelInboundSurfaceRejectedAdmission {
+    pub envelope: ProductInboundEnvelope,
+    pub error: ProductAdapterError,
+}
+
+/// Channel admission outcome returned by the ProductSurface command conduit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelInboundSurfaceOutcome {
+    Admitted(Box<ChannelInboundSurfaceAdmission>),
+    Invalid(ProductAdapterError),
+    Rejected(Box<ChannelInboundSurfaceRejectedAdmission>),
+}
+
+impl ChannelInboundSurfaceOutcome {
+    pub fn unavailable() -> Self {
+        Self::Invalid(ProductAdapterError::Internal {
+            detail: RedactedString::new("channel ProductSurface admission is not available"),
+        })
+    }
+}
+
 #[async_trait]
 pub trait ProductSurface: Send + Sync {
     async fn create_thread(
@@ -3063,6 +3112,11 @@ where
         let operation_id = ProductOperationId::parse(request.operation_id.as_str())
             .ok_or_else(|| RebornServicesError::service_unavailable(false))?;
         match operation_id {
+            ProductOperationId::ChannelInboundAdmit => {
+                Ok(ProductOperationResponse::channel_inbound(
+                    ChannelInboundSurfaceOutcome::unavailable(),
+                ))
+            }
             ProductOperationId::CreateThread => ProductOperationResponse::json(
                 self.create_thread(caller, product_command_input(request.input)?)
                     .await?,

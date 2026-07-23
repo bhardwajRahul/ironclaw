@@ -489,7 +489,10 @@ async fn build_harness_with_options(options: HarnessOptions) -> Harness {
 /// closure the binary-side native registration provides.
 fn slack_gate_reply_classifier() -> Arc<InboundPayloadClassifier> {
     Arc::new(|message| {
-        ironclaw_slack_extension::classify_interaction_resolution(&message.text, message.trigger)
+        ironclaw_slack_extension::classify_channel_interaction_resolution(
+            &message.text,
+            message.trigger,
+        )
     })
 }
 
@@ -577,7 +580,7 @@ impl ChannelConfigReactivation for NoopChannelConfigReactivation {
 /// The P4 generic-ingress transport: a minimal `ExtensionHost` with the REAL
 /// bundled channel manifest active (binding the real `SlackChannelAdapter`),
 /// the generic recipe verifier over the test signing secret, the generic
-/// inbound sink over the harness's `DefaultProductWorkflow`, and the
+/// inbound sink over the harness's `DefaultProductSurface`, and the
 /// canonical generic-ingress route mount the fixtures post to. Every request
 /// exercises the production per-request order: verification recipe →
 /// adapter parse → durable admission → post-admission delivery observer.

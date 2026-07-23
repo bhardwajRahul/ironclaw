@@ -3587,7 +3587,7 @@ async fn send_user_message_persists_personal_owner_for_webui() {
 /// gap by asserting the *rendered* origin appears in the captured model
 /// request.
 #[tokio::test]
-async fn send_user_message_renders_webui_origin_in_model_request() {
+async fn send_user_message_renders_cli_origin_in_model_request() {
     let root = tempfile::tempdir().expect("tempdir");
     let requests = Arc::new(StdMutex::new(Vec::new()));
     let gateway = Arc::new(RecordingGateway {
@@ -3647,11 +3647,11 @@ async fn send_user_message_renders_webui_origin_in_model_request() {
             .clone()
     };
 
-    // Exact string produced by LoopRuntimeContext::render_model_content
-    // for TurnOriginKind::WebUi (runtime_context.rs line 225).
+    // Exact string produced by LoopRuntimeContext::render_model_content for
+    // local runtime chat, which stamps the first-party source channel as CLI.
     assert!(
-        runtime_context_content.contains("Run origin: WebUI chat; replies render in this chat."),
-        "runtime-context system message must contain the WebUI origin line, \
+        runtime_context_content.contains("Run origin: CLI chat; replies render in this session."),
+        "runtime-context system message must contain the CLI origin line, \
              got: {runtime_context_content:?}"
     );
 
